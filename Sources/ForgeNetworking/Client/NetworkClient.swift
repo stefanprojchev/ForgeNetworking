@@ -22,7 +22,35 @@ public actor NetworkClient: NetworkClientProtocol {
     }
 
     public func send<E: Endpoint>(_ endpoint: E) async throws -> E.Response {
-        try await sendOnce(endpoint, allowRefresh: true)
+        let policy = endpoint.retryPolicy ?? configuration.retryPolicy
+        var attempt = 0
+        var lastError: NetworkError?
+
+        while attempt < policy.maxAttempts {
+            attempt += 1
+            do {
+                return try await sendOnce(endpoint, allowRefresh: true)
+            } catch let error as NetworkError {
+                lastError = error
+                // Check if this error type is retryable at all (ignoring attempt count).
+                let isRetryable = policy.shouldRetry(error: error, method: endpoint.method, attempt: 0)
+                guard isRetryable else {
+                    throw error
+                }
+                // If we have more attempts remaining, sleep then retry.
+                if attempt < policy.maxAttempts {
+                    let delay = RetryExecutor.delay(for: error, attempt: attempt, policy: policy)
+                    if delay > 0 {
+                        try await Task.sleep(for: .seconds(delay))
+                    }
+                }
+                // Otherwise fall through to retryExhausted below.
+            }
+        }
+        throw NetworkError.retryExhausted(lastError: lastError ?? .unacceptableStatus(
+            HTTPResponse(statusCode: 0, headers: [:], body: Data(),
+                         request: URLRequest(url: configuration.baseURL))
+        ))
     }
 
     private func sendOnce<E: Endpoint>(_ endpoint: E, allowRefresh: Bool) async throws -> E.Response {

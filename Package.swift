@@ -28,7 +28,11 @@ let package = Package(
         ),
         .testTarget(
             name: "ForgeNetworkingTests",
-            dependencies: ["ForgeNetworking", "ForgeNetworkingTesting"]
+            dependencies: [
+                "ForgeNetworking",
+                "ForgeNetworkingTesting",
+                .product(name: "ForgeCore", package: "ForgeCore"),
+            ]
         ),
     ],
     swiftLanguageModes: [.v6]

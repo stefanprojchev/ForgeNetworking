@@ -126,8 +126,67 @@ public actor NetworkClient: NetworkClientProtocol {
     public func sendWithProgress<E: ProgressReportingEndpoint>(
         _ endpoint: E
     ) async throws -> (E.Response, AsyncStream<TransferProgress>) {
-        // Implemented in Task 29.
-        fatalError("sendWithProgress is implemented in Task 29")
+        var built = try RequestBuilder.build(
+            endpoint: endpoint,
+            baseURL: configuration.baseURL,
+            defaultHeaders: configuration.defaultHeaders,
+            encoder: configuration.encoder
+        )
+        built.request.timeoutInterval = endpoint.timeout ?? configuration.timeout
+
+        if let auth = activeAuthProvider(for: endpoint) {
+            try await auth.apply(to: &built.request, endpoint: endpoint)
+        }
+        try await interceptors.applyRequest(&built.request, endpoint: endpoint)
+
+        var continuation: AsyncStream<TransferProgress>.Continuation!
+        let stream = AsyncStream<TransferProgress> { continuation = $0 }
+        let delegate = ProgressDelegate(continuation: continuation)
+
+        let host = built.request.url?.host ?? ""
+        await gate.acquire(host: host)
+        defer { Task { await gate.release(host: host) } }
+
+        let (data, urlResponse): (Data, URLResponse)
+        do {
+            if let fileURL = built.bodyFileURL {
+                (data, urlResponse) = try await session.upload(for: built.request, fromFile: fileURL, delegate: delegate)
+            } else {
+                (data, urlResponse) = try await session.data(for: built.request, delegate: delegate)
+            }
+        } catch let urlError as URLError {
+            continuation.finish()
+            switch urlError.code {
+            case .timedOut: throw NetworkError.timeout
+            case .cancelled: throw NetworkError.cancelled
+            default: throw NetworkError.transport(urlError)
+            }
+        }
+
+        continuation.finish()
+
+        guard let http = urlResponse as? HTTPURLResponse else {
+            throw NetworkError.unacceptableStatus(
+                HTTPResponse(statusCode: 0, headers: [:], body: data, request: built.request)
+            )
+        }
+        var response = HTTPResponse(
+            statusCode: http.statusCode,
+            headers: Self.headers(from: http),
+            body: data,
+            request: built.request
+        )
+        try await interceptors.applyResponse(&response, endpoint: endpoint)
+        guard (200...299).contains(response.statusCode) else {
+            throw NetworkError.from(response: response)
+        }
+        if E.Response.self == Empty.self { return (Empty() as! E.Response, stream) }
+        do {
+            let decoded = try configuration.decoder.decode(E.Response.self, from: data)
+            return (decoded, stream)
+        } catch {
+            throw NetworkError.decoding(error, response)
+        }
     }
 
     // MARK: - Internal

@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+Packages/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.xcuserstate
+.netrc
+
+# Astro / docs site
+docs/node_modules/
+docs/dist/
+docs/.astro/
+docs/.output/
+docs/.vercel/
+
+# Internal planning artifacts — not for public repos
+docs/superpowers/
+
+# Env
+.env
+.env.*

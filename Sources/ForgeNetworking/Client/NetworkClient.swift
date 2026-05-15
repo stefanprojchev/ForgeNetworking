@@ -22,6 +22,10 @@ public actor NetworkClient: NetworkClientProtocol {
     }
 
     public func send<E: Endpoint>(_ endpoint: E) async throws -> E.Response {
+        try await sendOnce(endpoint, allowRefresh: true)
+    }
+
+    private func sendOnce<E: Endpoint>(_ endpoint: E, allowRefresh: Bool) async throws -> E.Response {
         var built = try RequestBuilder.build(
             endpoint: endpoint,
             baseURL: configuration.baseURL,
@@ -29,6 +33,11 @@ public actor NetworkClient: NetworkClientProtocol {
             encoder: configuration.encoder
         )
         built.request.timeoutInterval = endpoint.timeout ?? configuration.timeout
+
+        let activeAuth = self.activeAuthProvider(for: endpoint)
+        if let auth = activeAuth {
+            try await auth.apply(to: &built.request, endpoint: endpoint)
+        }
 
         try await interceptors.applyRequest(&built.request, endpoint: endpoint)
 
@@ -51,6 +60,19 @@ public actor NetworkClient: NetworkClientProtocol {
         )
         try await interceptors.applyResponse(&response, endpoint: endpoint)
 
+        // Refresh-once on 401
+        if response.statusCode == 401, allowRefresh, let auth = activeAuth {
+            let recovery = try await auth.handle(unauthorized: response)
+            switch recovery {
+            case .retry:
+                authEventsContinuation.yield(.refreshed)
+                return try await sendOnce(endpoint, allowRefresh: false)
+            case .fail:
+                authEventsContinuation.yield(.signedOut)
+                throw NetworkError.unauthorized
+            }
+        }
+
         guard (200...299).contains(response.statusCode) else {
             throw NetworkError.from(response: response)
         }
@@ -62,6 +84,14 @@ public actor NetworkClient: NetworkClientProtocol {
             return try configuration.decoder.decode(E.Response.self, from: data)
         } catch {
             throw NetworkError.decoding(error, response)
+        }
+    }
+
+    private func activeAuthProvider(for endpoint: any Endpoint) -> (any AuthProvider)? {
+        switch endpoint.authentication {
+        case .none: return nil
+        case .override(let provider): return provider
+        case .inherit: return configuration.authProvider
         }
     }
 

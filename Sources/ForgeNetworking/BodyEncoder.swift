@@ -40,12 +40,51 @@ public enum BodyEncoder {
                 contentType: "application/x-www-form-urlencoded"
             )
 
+        case .formItems(let items, let encoding):
+            var pairs: [(String, String)] = []
+            for (key, value) in items {
+                appendFormPairs(prefix: key, value: value, encoding: encoding, into: &pairs)
+            }
+            var components = URLComponents()
+            components.queryItems = pairs.map { URLQueryItem(name: $0.0, value: $0.1) }
+            let raw = components.percentEncodedQuery ?? ""
+            return EncodedRequestBody(
+                payload: .data(Data(raw.utf8)),
+                contentType: "application/x-www-form-urlencoded"
+            )
+
         case .multipart(let multipart):
             let url = try multipart.writeToTemporaryFile()
             return EncodedRequestBody(payload: .fileURL(url), contentType: multipart.contentType)
 
         case .raw(let data, let contentType):
             return EncodedRequestBody(payload: .data(data), contentType: contentType)
+        }
+    }
+
+    private static func appendFormPairs(
+        prefix: String,
+        value: FormValue,
+        encoding: FormEncoding,
+        into pairs: inout [(String, String)]
+    ) {
+        switch value {
+        case .string(let s):
+            pairs.append((prefix, s))
+        case .array(let arr):
+            let key = encoding == .bracketed ? "\(prefix)[]" : prefix
+            for item in arr {
+                pairs.append((key, item))
+            }
+        case .nested(let dict):
+            for (childKey, childValue) in dict {
+                appendFormPairs(
+                    prefix: "\(prefix)[\(childKey)]",
+                    value: childValue,
+                    encoding: encoding,
+                    into: &pairs
+                )
+            }
         }
     }
 }

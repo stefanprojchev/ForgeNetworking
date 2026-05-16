@@ -159,6 +159,11 @@ public actor NetworkClient: NetworkClientProtocol {
         do {
             if let fileURL = built.bodyFileURL {
                 (data, urlResponse) = try await session.upload(for: built.request, fromFile: fileURL, delegate: delegate)
+            } else if let bodyData = built.request.httpBody, !bodyData.isEmpty {
+                // Use upload(for:from:) for explicit progress reporting on body uploads (raw, JSON, form).
+                var requestNoBody = built.request
+                requestNoBody.httpBody = nil
+                (data, urlResponse) = try await session.upload(for: requestNoBody, from: bodyData, delegate: delegate)
             } else {
                 (data, urlResponse) = try await session.data(for: built.request, delegate: delegate)
             }

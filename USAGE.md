@@ -478,6 +478,8 @@ multipart.append(
 )
 ```
 
+Progress is not multipart-specific. Any endpoint conforming to `ProgressReportingEndpoint` gets upload progress, including raw bytes (`.raw(data, contentType:)`) and JSON (`.json(payload)`) bodies. Useful for large raw uploads (video, binary blobs).
+
 ---
 
 ## Background uploads and downloads

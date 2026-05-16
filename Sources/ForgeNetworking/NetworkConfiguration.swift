@@ -6,6 +6,7 @@ public struct NetworkConfiguration: Sendable {
     public var encoder: JSONEncoder
     public var decoder: JSONDecoder
     public var sessionConfiguration: URLSessionConfiguration
+    public var sessionDelegate: (any URLSessionDelegate & Sendable)?
     public var requestInterceptors: [any RequestInterceptor]
     public var responseInterceptors: [any ResponseInterceptor]
     public var authProvider: (any AuthProvider)?
@@ -20,6 +21,7 @@ public struct NetworkConfiguration: Sendable {
         encoder: JSONEncoder = JSONEncoder(),
         decoder: JSONDecoder = JSONDecoder(),
         sessionConfiguration: URLSessionConfiguration = .default,
+        sessionDelegate: (any URLSessionDelegate & Sendable)? = nil,
         requestInterceptors: [any RequestInterceptor] = [],
         responseInterceptors: [any ResponseInterceptor] = [],
         authProvider: (any AuthProvider)? = nil,
@@ -33,6 +35,7 @@ public struct NetworkConfiguration: Sendable {
         self.encoder = encoder
         self.decoder = decoder
         self.sessionConfiguration = sessionConfiguration
+        self.sessionDelegate = sessionDelegate
         self.requestInterceptors = requestInterceptors
         self.responseInterceptors = responseInterceptors
         self.authProvider = authProvider

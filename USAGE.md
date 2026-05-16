@@ -763,3 +763,27 @@ Both live in `ForgeNetworkingTesting`. Add it as a dependency of your test targe
     ]
 )
 ```
+
+## Custom URLSession delegate (pinning, redirects, challenges)
+
+For certificate pinning, custom redirect handling, mTLS, or other URLSession-level concerns, supply a delegate via `NetworkConfiguration.sessionDelegate`:
+
+```swift
+final class PinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        // Your pinning logic. Compare challenge.protectionSpace.serverTrust against
+        // pinned public keys / certificates, then complete with .useCredential or .cancelAuthenticationChallenge.
+        completionHandler(.performDefaultHandling, nil)
+    }
+}
+
+var config = NetworkConfiguration(baseURL: URL(string: "https://api.example.com")!)
+config.sessionDelegate = PinningDelegate()
+let client = NetworkClient(configuration: config)
+```
+
+The delegate must be `Sendable` (or `@unchecked Sendable`). It receives the session-level callbacks; per-task progress callbacks for `sendWithProgress` go to an internal delegate independently.

@@ -624,6 +624,43 @@ The error model is exhaustive — every failure path returns a `NetworkError` ca
 
 ---
 
+## Typed per-endpoint errors
+
+By default, error response bodies surface as a raw `ErrorPayload` wrapper that you decode yourself. For endpoints with a consistent error envelope, declare the error type via the `ErrorPayload` associated type and use `NetworkError.apiError(for:)`:
+
+```swift
+struct APIError: Codable, Sendable {
+    let code: String
+    let message: String
+}
+
+struct CreateOrder: Endpoint {
+    typealias Body = OrderRequest
+    typealias Response = OrderDTO
+    typealias ErrorPayload = APIError    // declare it
+
+    let payload: OrderRequest
+    var path: String { "/orders" }
+    var method: HTTPMethod { .post }
+    var body: RequestBody<OrderRequest> { .json(payload) }
+}
+
+do {
+    let order = try await client.send(CreateOrder(payload: req))
+    confirm(order)
+} catch let error as NetworkError {
+    if let api = error.apiError(for: CreateOrder.self) {
+        showValidationError(api.message)
+    } else {
+        showGenericError()
+    }
+}
+```
+
+`ErrorPayload` defaults to `Empty`, so existing endpoints compile unchanged. `apiError(for:)` returns `nil` for non-error cases, missing payloads, and decode failures.
+
+---
+
 ## Custom encoder / decoder
 
 ```swift

@@ -3,6 +3,7 @@ import Foundation
 public protocol Endpoint<Body, Response>: Sendable {
     associatedtype Body: Encodable & Sendable = Empty
     associatedtype Response: Decodable & Sendable
+    associatedtype ErrorPayload: Decodable & Sendable = Empty
 
     var path: String { get }
     var method: HTTPMethod { get }

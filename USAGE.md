@@ -334,6 +334,29 @@ final class ConsoleLogger: NetworkLogger {
 
 ---
 
+## In-app network capture with ForgeNet
+
+For interactive in-app inspection of network calls (request/response bodies, headers, timing, errors) — typical use case is a debug screen in DEBUG builds — use `ForgeNet` from the `ForgeLog` package. It installs as a `URLProtocol` into your session configuration:
+
+```swift
+import ForgeLog
+import ForgeNetworking
+
+var config = NetworkConfiguration(baseURL: URL(string: "https://api.example.com")!)
+#if DEBUG
+ForgeNet.install(into: config.sessionConfiguration)
+#endif
+let client = NetworkClient(configuration: config)
+```
+
+ForgeNet handles its own redaction, body capture (up to a configurable byte limit), and presentation via `ForgeNetView`. It's a sibling concern — `LoggingInterceptor` in ForgeNetworking is for lightweight always-on logs (request/response status + headers, redacted); ForgeNet is for the deeper debug experience.
+
+Don't enable both `installGlobally()` and `install(into:)` for the same session — they'll double-record.
+
+Add `ForgeLog` (with the `ForgeNet` product) as a dependency of your app target. ForgeNetworking does not depend on ForgeLog — the wiring is at the app layer.
+
+---
+
 ## Retry policy
 
 Default policy:

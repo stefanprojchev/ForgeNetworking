@@ -14,8 +14,8 @@ let package = Package(
         .library(name: "ForgeNetworkingKeychain", targets: ["ForgeNetworkingKeychain"]),
     ],
     dependencies: [
-        .package(path: "../ForgeCore"),
-        .package(path: "../ForgeStorage"),
+        .package(url: "https://github.com/stefanprojchev/ForgeCore.git", from: "1.0.0"),
+        .package(url: "https://github.com/stefanprojchev/ForgeStorage.git", from: "1.0.0"),
     ],
     targets: [
         .target(

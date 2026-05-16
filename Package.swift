@@ -11,9 +11,11 @@ let package = Package(
     products: [
         .library(name: "ForgeNetworking", targets: ["ForgeNetworking"]),
         .library(name: "ForgeNetworkingTesting", targets: ["ForgeNetworkingTesting"]),
+        .library(name: "ForgeNetworkingKeychain", targets: ["ForgeNetworkingKeychain"]),
     ],
     dependencies: [
         .package(path: "../ForgeCore"),
+        .package(path: "../ForgeStorage"),
     ],
     targets: [
         .target(
@@ -26,12 +28,26 @@ let package = Package(
             name: "ForgeNetworkingTesting",
             dependencies: ["ForgeNetworking"]
         ),
+        .target(
+            name: "ForgeNetworkingKeychain",
+            dependencies: [
+                "ForgeNetworking",
+                .product(name: "ForgeCrypt", package: "ForgeStorage"),
+            ]
+        ),
         .testTarget(
             name: "ForgeNetworkingTests",
             dependencies: [
                 "ForgeNetworking",
                 "ForgeNetworkingTesting",
                 .product(name: "ForgeCore", package: "ForgeCore"),
+            ]
+        ),
+        .testTarget(
+            name: "ForgeNetworkingKeychainTests",
+            dependencies: [
+                "ForgeNetworkingKeychain",
+                .product(name: "ForgeCrypt", package: "ForgeStorage"),
             ]
         ),
     ],

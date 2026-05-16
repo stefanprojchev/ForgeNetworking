@@ -1,6 +1,6 @@
 import Foundation
 
-public struct TokenPair: Sendable, Equatable {
+public struct TokenPair: Codable, Sendable, Equatable {
     public let accessToken: String
     public let refreshToken: String
     public let expiresAt: Date?

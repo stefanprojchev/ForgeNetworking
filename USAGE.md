@@ -482,6 +482,31 @@ Progress is not multipart-specific. Any endpoint conforming to `ProgressReportin
 
 ---
 
+## Streaming responses (AsyncSequence)
+
+For NDJSON, log tails, large downloads not via background, or any chunked response, use `client.stream(_:)`. It returns the headers immediately and the body as an `AsyncThrowingStream<Data, any Error>`:
+
+```swift
+struct StreamEvents: Endpoint {
+    typealias Body = Empty
+    typealias Response = Empty
+    var path: String { "/events/stream" }
+    var method: HTTPMethod { .get }
+}
+
+let (response, stream) = try await client.stream(StreamEvents())
+print("Started streaming, status: \(response.statusCode)")
+
+for try await chunk in stream {
+    // Parse chunk incrementally — NDJSON one line at a time, SSE one event at a time, etc.
+    process(chunk)
+}
+```
+
+The stream finishes when the server closes the connection; it throws on transport errors. Cancelling the `Task` that's consuming the stream tears down the underlying connection.
+
+---
+
 ## Background uploads and downloads
 
 `NetworkClient` is for foreground requests that complete while the app is running. For uploads/downloads that must survive app suspension (large file uploads, video downloads), use `BackgroundTransferClient`.

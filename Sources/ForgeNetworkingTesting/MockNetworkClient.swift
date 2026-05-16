@@ -30,6 +30,19 @@ public actor MockNetworkClient: NetworkClientProtocol {
         return (response, stream)
     }
 
+    public nonisolated func stream<E: Endpoint>(
+        _ endpoint: E
+    ) async throws -> (HTTPResponse, AsyncThrowingStream<Data, any Error>) {
+        await recorder.record(endpoint)
+        let response = HTTPResponse(
+            statusCode: 200, headers: [:], body: Data(),
+            request: URLRequest(url: URL(string: "https://mock.test")!)
+        )
+        let (dataStream, continuation) = AsyncThrowingStream.makeStream(of: Data.self)
+        continuation.finish()
+        return (response, dataStream)
+    }
+
     private func pop<E: Endpoint>(_ type: E.Type) async throws -> E.Response {
         let key = ObjectIdentifier(type)
         guard let raw = stubs[key], let stub = raw as? StubResponse<E.Response> else {

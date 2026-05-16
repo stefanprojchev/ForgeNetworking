@@ -6,4 +6,8 @@ public protocol NetworkClientProtocol: Sendable {
     func sendWithProgress<E: ProgressReportingEndpoint>(
         _ endpoint: E
     ) async throws -> (E.Response, AsyncStream<TransferProgress>)
+
+    func stream<E: Endpoint>(
+        _ endpoint: E
+    ) async throws -> (HTTPResponse, AsyncThrowingStream<Data, any Error>)
 }

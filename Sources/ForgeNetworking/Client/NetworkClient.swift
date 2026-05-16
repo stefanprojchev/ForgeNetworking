@@ -202,6 +202,92 @@ public actor NetworkClient: NetworkClientProtocol {
         }
     }
 
+    public func stream<E: Endpoint>(
+        _ endpoint: E
+    ) async throws -> (HTTPResponse, AsyncThrowingStream<Data, any Error>) {
+        var built = try RequestBuilder.build(
+            endpoint: endpoint,
+            baseURL: configuration.baseURL,
+            defaultHeaders: configuration.defaultHeaders,
+            encoder: configuration.encoder
+        )
+        built.request.timeoutInterval = endpoint.timeout ?? configuration.timeout
+
+        if let auth = activeAuthProvider(for: endpoint) {
+            try await auth.apply(to: &built.request, endpoint: endpoint)
+        }
+        try await interceptors.applyRequest(&built.request, endpoint: endpoint)
+
+        let host = built.request.url?.host ?? ""
+        await gate.acquire(host: host)
+
+        let (bytes, urlResponse): (URLSession.AsyncBytes, URLResponse)
+        do {
+            (bytes, urlResponse) = try await session.bytes(for: built.request)
+        } catch let urlError as URLError {
+            await gate.release(host: host)
+            switch urlError.code {
+            case .timedOut: throw NetworkError.timeout
+            case .cancelled: throw NetworkError.cancelled
+            default: throw NetworkError.transport(urlError)
+            }
+        } catch {
+            await gate.release(host: host)
+            throw error
+        }
+
+        guard let http = urlResponse as? HTTPURLResponse else {
+            await gate.release(host: host)
+            throw NetworkError.unacceptableStatus(
+                HTTPResponse(statusCode: 0, headers: [:], body: Data(), request: built.request)
+            )
+        }
+
+        var response = HTTPResponse(
+            statusCode: http.statusCode,
+            headers: Self.headers(from: http),
+            body: Data(),
+            request: built.request
+        )
+        try await interceptors.applyResponse(&response, endpoint: endpoint)
+
+        guard (200...299).contains(response.statusCode) else {
+            await gate.release(host: host)
+            throw NetworkError.from(response: response)
+        }
+
+        // Build a chunked stream that releases the concurrency gate when it ends.
+        let chunkSize = 16 * 1024
+        let gate = self.gate
+        let dataStream = AsyncThrowingStream<Data, any Error> { continuation in
+            let task = Task {
+                do {
+                    var buffer = Data()
+                    buffer.reserveCapacity(chunkSize)
+                    for try await byte in bytes {
+                        buffer.append(byte)
+                        if buffer.count >= chunkSize {
+                            continuation.yield(buffer)
+                            buffer.removeAll(keepingCapacity: true)
+                        }
+                    }
+                    if !buffer.isEmpty {
+                        continuation.yield(buffer)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+                await gate.release(host: host)
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+
+        return (response, dataStream)
+    }
+
     // MARK: - Internal
 
     private func performData(_ built: BuiltRequest) async throws -> (Data, URLResponse) {

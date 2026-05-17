@@ -38,9 +38,9 @@ private struct GetUnvalidated: Endpoint {
 @Suite("Content-Type validation", .serialized)
 struct ContentTypeValidationTests {
 
-    private func client() -> NetworkClient {
+    private func client(handler: @escaping MockURLProtocol.Handler) -> NetworkClient {
         var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration(handler: handler)
         return NetworkClient(configuration: config)
     }
 
@@ -91,27 +91,25 @@ struct ContentTypeValidationTests {
     @Test("Server returns JSON for JSON-expecting endpoint — succeeds")
     func jsonForJsonSucceeds() async throws {
         let dto = TestPayloadDTO(id: 1, name: "ok")
-        MockURLProtocol.handler = { request in
+        let result = try await client { request in
             let data = try JSONEncoder().encode(dto)
             return (HTTPURLResponse(
                 url: request.url!, statusCode: 200, httpVersion: nil,
                 headerFields: ["Content-Type": "application/json"]
             )!, data)
-        }
-        let result = try await client().send(GetJSON())
+        }.send(GetJSON())
         #expect(result == dto)
     }
 
     @Test("Server returns HTML for JSON-expecting endpoint — throws unacceptableContentType")
     func htmlForJsonThrows() async {
-        MockURLProtocol.handler = { request in
-            (HTTPURLResponse(
-                url: request.url!, statusCode: 200, httpVersion: nil,
-                headerFields: ["Content-Type": "text/html"]
-            )!, Data("<html><body>captive portal</body></html>".utf8))
-        }
         do {
-            _ = try await client().send(GetJSON())
+            _ = try await client { request in
+                (HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil,
+                    headerFields: ["Content-Type": "text/html"]
+                )!, Data("<html><body>captive portal</body></html>".utf8))
+            }.send(GetJSON())
             Issue.record("expected throw")
         } catch let NetworkError.unacceptableContentType(_, expected, actual) {
             #expect(expected == ["application/json"])
@@ -123,14 +121,13 @@ struct ContentTypeValidationTests {
 
     @Test("Server returns no Content-Type header — throws unacceptableContentType with nil actual")
     func missingContentTypeThrows() async {
-        MockURLProtocol.handler = { request in
-            (HTTPURLResponse(
-                url: request.url!, statusCode: 200, httpVersion: nil,
-                headerFields: nil
-            )!, Data())
-        }
         do {
-            _ = try await client().send(GetJSON())
+            _ = try await client { request in
+                (HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil,
+                    headerFields: nil
+                )!, Data())
+            }.send(GetJSON())
             Issue.record("expected throw")
         } catch let NetworkError.unacceptableContentType(_, _, actual) {
             #expect(actual == nil)
@@ -141,27 +138,25 @@ struct ContentTypeValidationTests {
 
     @Test("text/* wildcard accepts text/plain")
     func wildcardEndToEnd() async throws {
-        MockURLProtocol.handler = { request in
+        let text = try await client { request in
             (HTTPURLResponse(
                 url: request.url!, statusCode: 200, httpVersion: nil,
                 headerFields: ["Content-Type": "text/plain; charset=utf-8"]
             )!, Data("hello".utf8))
-        }
-        let text = try await client().send(GetText())
+        }.send(GetText())
         #expect(text == "hello")
     }
 
     @Test("Endpoint without acceptableContentTypes skips validation entirely")
     func unvalidatedEndpointSkips() async throws {
         let dto = TestPayloadDTO(id: 99, name: "any")
-        MockURLProtocol.handler = { request in
+        let result = try await client { request in
             let data = try JSONEncoder().encode(dto)
             return (HTTPURLResponse(
                 url: request.url!, statusCode: 200, httpVersion: nil,
                 headerFields: ["Content-Type": "application/garbage"]
             )!, data)
-        }
-        let result = try await client().send(GetUnvalidated())
+        }.send(GetUnvalidated())
         #expect(result == dto)
     }
 
@@ -169,14 +164,13 @@ struct ContentTypeValidationTests {
     func errorStatusBypassesValidation() async {
         // 4xx should hit status-mapping path BEFORE content-type validation,
         // so the error is .clientError (with whatever body).
-        MockURLProtocol.handler = { request in
-            (HTTPURLResponse(
-                url: request.url!, statusCode: 400, httpVersion: nil,
-                headerFields: ["Content-Type": "text/html"]
-            )!, Data("<error>".utf8))
-        }
         do {
-            _ = try await client().send(GetJSON())
+            _ = try await client { request in
+                (HTTPURLResponse(
+                    url: request.url!, statusCode: 400, httpVersion: nil,
+                    headerFields: ["Content-Type": "text/html"]
+                )!, Data("<error>".utf8))
+            }.send(GetJSON())
             Issue.record("expected throw")
         } catch let NetworkError.clientError(response, _) {
             #expect(response.statusCode == 400)

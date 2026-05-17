@@ -55,14 +55,12 @@ struct NetworkClientEndpointOverridesTests {
         let provider = BearerAuthProvider(store: store, coordinator: coord)
 
         let authHeaderSeen = LockedState<String?>(nil)
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             authHeaderSeen.withLock { $0 = request.value(forHTTPHeaderField: "Authorization") }
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.authProvider = provider
 
         let client = NetworkClient(configuration: config)
@@ -81,14 +79,12 @@ struct NetworkClientEndpointOverridesTests {
         let mainProvider = BearerAuthProvider(store: store, coordinator: coord)
 
         let authHeaderSeen = LockedState<String?>(nil)
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             authHeaderSeen.withLock { $0 = request.value(forHTTPHeaderField: "Authorization") }
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.authProvider = mainProvider
 
         let client = NetworkClient(configuration: config)
@@ -103,7 +99,8 @@ struct NetworkClientEndpointOverridesTests {
     @Test("Per-endpoint retryPolicy overrides client default")
     func perEndpointRetryPolicy() async throws {
         let requestCount = LockedState(0)
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let n = requestCount.withLock { $0 += 1; return $0 }
             if n < 5 {
                 return (HTTPURLResponse(url: request.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!, Data())
@@ -111,9 +108,6 @@ struct NetworkClientEndpointOverridesTests {
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         // Client default allows only 1 attempt — endpoint overrides to 5
         config.retryPolicy = RetryPolicy(maxAttempts: 1)
 
@@ -127,15 +121,13 @@ struct NetworkClientEndpointOverridesTests {
 
     @Test("Per-endpoint timeout overrides client default and triggers .timeout")
     func perEndpointTimeout() async throws {
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             // Delay longer than the endpoint's 50ms timeout
             Thread.sleep(forTimeInterval: 0.5)
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.timeout = 60           // client default: very long
         config.retryPolicy = RetryPolicy(maxAttempts: 1)
 

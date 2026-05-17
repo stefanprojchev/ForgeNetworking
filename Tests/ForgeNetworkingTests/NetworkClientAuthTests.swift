@@ -18,14 +18,12 @@ struct NetworkClientAuthTests {
         let coord = RefreshCoordinator { _ in TokenPair(accessToken: "n", refreshToken: "n") }
         let provider = BearerAuthProvider(store: store, coordinator: coord)
 
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc")
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.authProvider = provider
 
         let client = NetworkClient(configuration: config)
@@ -39,7 +37,8 @@ struct NetworkClientAuthTests {
         let provider = BearerAuthProvider(store: store, coordinator: coord)
         let calls = LockedState<[String]>([])
 
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let token = request.value(forHTTPHeaderField: "Authorization") ?? ""
             calls.withLock { $0.append(token) }
             if token == "Bearer old" {
@@ -48,9 +47,6 @@ struct NetworkClientAuthTests {
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.authProvider = provider
         config.retryPolicy = RetryPolicy(maxAttempts: 1) // disable transport retries for clarity
 
@@ -70,12 +66,10 @@ struct NetworkClientAuthTests {
         let coord = RefreshCoordinator { _ -> TokenPair in throw Boom() }
         let provider = BearerAuthProvider(store: store, coordinator: coord)
 
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             (HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!, Data())
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.authProvider = provider
         config.retryPolicy = RetryPolicy(maxAttempts: 1)
 

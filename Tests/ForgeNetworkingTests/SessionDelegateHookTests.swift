@@ -38,14 +38,12 @@ struct SessionDelegateHookTests {
     @Test("Custom session delegate receives didFinishCollecting metrics")
     func receivesMetrics() async throws {
         let delegate = CapturingDelegate()
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let dto = TestPayloadDTO(id: 1, name: "ok")
             let data = try JSONEncoder().encode(dto)
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.sessionDelegate = delegate
 
         let client = NetworkClient(configuration: config)
@@ -58,14 +56,12 @@ struct SessionDelegateHookTests {
 
     @Test("Without a custom delegate, baseline send still works")
     func noDelegateBaseline() async throws {
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let dto = TestPayloadDTO(id: 1, name: "ok")
             let data = try JSONEncoder().encode(dto)
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         // sessionDelegate not set — defaults to nil
 
         let client = NetworkClient(configuration: config)

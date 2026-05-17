@@ -24,14 +24,12 @@ private struct UploadJSON: ProgressReportingEndpoint {
 struct NonMultipartProgressTests {
     @Test("Raw body POST returns response and progress stream that completes")
     func rawBodyPost() async throws {
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let dto = TestPayloadDTO(id: 1, name: "ok")
             let data = try JSONEncoder().encode(dto)
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         let client = NetworkClient(configuration: config)
 
         let bigPayload = Data(repeating: 0xAB, count: 128 * 1024)
@@ -47,14 +45,12 @@ struct NonMultipartProgressTests {
 
     @Test("JSON body POST returns response and progress stream that completes")
     func jsonBodyPost() async throws {
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let dto = TestPayloadDTO(id: 2, name: "json-ok")
             let data = try JSONEncoder().encode(dto)
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         let client = NetworkClient(configuration: config)
 
         let (response, progress) = try await client.sendWithProgress(UploadJSON(dto: TestPayloadDTO(id: 2, name: "x")))

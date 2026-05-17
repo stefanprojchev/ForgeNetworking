@@ -29,7 +29,8 @@ struct NetworkClientConcurrencyTests {
         }
         let provider = BearerAuthProvider(store: store, coordinator: coord)
 
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let auth = request.value(forHTTPHeaderField: "Authorization") ?? ""
             capturedHeaders.withLock { $0.append(auth) }
             if auth == "Bearer old" {
@@ -38,9 +39,6 @@ struct NetworkClientConcurrencyTests {
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.authProvider = provider
         config.retryPolicy = RetryPolicy(maxAttempts: 1)
 
@@ -79,7 +77,8 @@ struct NetworkClientConcurrencyTests {
         let coord = RefreshCoordinator { _ in TokenPair(accessToken: "new", refreshToken: "r2") }
         let provider = BearerAuthProvider(store: store, coordinator: coord)
 
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let auth = request.value(forHTTPHeaderField: "Authorization") ?? ""
             if auth == "Bearer old" {
                 return (HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!, Data())
@@ -87,9 +86,6 @@ struct NetworkClientConcurrencyTests {
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.authProvider = provider
         config.retryPolicy = RetryPolicy(maxAttempts: 1)
 
@@ -121,15 +117,13 @@ struct NetworkClientConcurrencyTests {
 
     @Test("Task.cancel() during send surfaces NetworkError.cancelled or transport cancelled")
     func cancellationSurfacesError() async throws {
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             // Delay long enough for the task to be cancelled before response
             Thread.sleep(forTimeInterval: 1.0)
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.retryPolicy = RetryPolicy(maxAttempts: 1)
 
         let client = NetworkClient(configuration: config)

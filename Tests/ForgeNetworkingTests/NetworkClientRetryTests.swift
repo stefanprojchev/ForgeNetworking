@@ -15,7 +15,8 @@ struct NetworkClientRetryTests {
     @Test("Retries 503 then succeeds")
     func retriesThenSucceeds() async throws {
         let count = LockedState(0)
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let n = count.withLock { $0 += 1; return $0 }
             if n < 2 {
                 return (HTTPURLResponse(url: request.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!, Data())
@@ -23,9 +24,6 @@ struct NetworkClientRetryTests {
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.retryPolicy = RetryPolicy(maxAttempts: 3, backoff: .fixed(0.01))
 
         let client = NetworkClient(configuration: config)
@@ -36,12 +34,10 @@ struct NetworkClientRetryTests {
 
     @Test("Exhausts attempts and throws .retryExhausted")
     func exhausts() async throws {
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             (HTTPURLResponse(url: request.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!, Data())
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.retryPolicy = RetryPolicy(maxAttempts: 2, backoff: .fixed(0.01))
 
         let client = NetworkClient(configuration: config)
@@ -58,7 +54,8 @@ struct NetworkClientRetryTests {
     @Test("Honors Retry-After header (0 seconds) and retries immediately")
     func honorsRetryAfter() async throws {
         let count = LockedState(0)
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let n = count.withLock { $0 += 1; return $0 }
             if n == 1 {
                 return (HTTPURLResponse(
@@ -69,9 +66,6 @@ struct NetworkClientRetryTests {
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.retryPolicy = RetryPolicy(maxAttempts: 3, backoff: .fixed(60))  // long backoff
         // Retry-After: 0 should override the long backoff.
 

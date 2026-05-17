@@ -29,7 +29,8 @@ struct NetworkClientRetryAdvancedTests {
     @Test("Fixed backoff of 0.2s produces measurable delay between attempts")
     func backoffActuallyDelays() async throws {
         let count = LockedState(0)
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let n = count.withLock { $0 += 1; return $0 }
             if n < 2 {
                 return (HTTPURLResponse(url: request.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!, Data())
@@ -37,9 +38,6 @@ struct NetworkClientRetryAdvancedTests {
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.retryPolicy = RetryPolicy(maxAttempts: 2, backoff: .fixed(0.2))
 
         let client = NetworkClient(configuration: config)
@@ -66,7 +64,8 @@ struct NetworkClientRetryAdvancedTests {
         let retryAfterValue = formatter.string(from: retryAfterDate)
 
         let count = LockedState(0)
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let n = count.withLock { $0 += 1; return $0 }
             if n == 1 {
                 return (HTTPURLResponse(
@@ -79,9 +78,6 @@ struct NetworkClientRetryAdvancedTests {
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         // Long backoff (60s) ensures any actual delay comes from Retry-After, not the backoff
         config.retryPolicy = RetryPolicy(maxAttempts: 2, backoff: .fixed(60), honorsRetryAfter: true)
 
@@ -101,7 +97,8 @@ struct NetworkClientRetryAdvancedTests {
     @Test("Custom shouldRetry closure overrides default method check for POST")
     func customShouldRetryOverridesMethodCheck() async throws {
         let requestCount = LockedState(0)
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let n = requestCount.withLock { $0 += 1; return $0 }
             if n < 2 {
                 // 422 is a client error — normally not retried, and POST is not in retryableMethods
@@ -110,9 +107,6 @@ struct NetworkClientRetryAdvancedTests {
             let data = try JSONEncoder().encode(TestPayloadDTO(id: 1, name: "ok"))
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         // Custom closure that always retries regardless of method or status
         config.retryPolicy = RetryPolicy(
             maxAttempts: 2,

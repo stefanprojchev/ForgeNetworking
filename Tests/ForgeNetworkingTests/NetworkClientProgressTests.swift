@@ -18,14 +18,12 @@ private struct UploadAvatar: ProgressReportingEndpoint {
 struct NetworkClientProgressTests {
     @Test("Returns response and a progress stream that emits at least one update")
     func emitsProgress() async throws {
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             let dto = TestPayloadDTO(id: 1, name: "uploaded")
             let data = try JSONEncoder().encode(dto)
             return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
         }
-
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         let client = NetworkClient(configuration: config)
 
         let (response, progress) = try await client.sendWithProgress(UploadAvatar())

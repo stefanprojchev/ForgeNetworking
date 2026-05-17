@@ -47,11 +47,10 @@ struct NetworkClientScenariosTests {
 
     @Test("204 No Content returns Empty without a decode error")
     func noContentReturnsEmpty() async throws {
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             (HTTPURLResponse(url: request.url!, statusCode: 204, httpVersion: nil, headerFields: nil)!, Data())
         }
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.retryPolicy = RetryPolicy(maxAttempts: 1)
 
         let client = NetworkClient(configuration: config)
@@ -63,11 +62,10 @@ struct NetworkClientScenariosTests {
 
     @Test("401 without auth provider throws .unauthorized via status mapping")
     func unauthorizedWithoutProvider() async {
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             (HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!, Data())
         }
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.authProvider = nil
         config.retryPolicy = RetryPolicy(maxAttempts: 1)
 
@@ -87,17 +85,15 @@ struct NetworkClientScenariosTests {
     @Test("401 always returned: refresh then second 401 terminates")
     func doubleUnauthorizedTerminates() async throws {
         let requestCount = LockedState(0)
-        MockURLProtocol.handler = { request in
-            requestCount.withLock { $0 += 1 }
-            return (HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!, Data())
-        }
-
         let store = InMemoryTokenStore(initial: TokenPair(accessToken: "old", refreshToken: "r"))
         let coord = RefreshCoordinator { _ in TokenPair(accessToken: "new", refreshToken: "r2") }
         let provider = BearerAuthProvider(store: store, coordinator: coord)
 
         var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
+            requestCount.withLock { $0 += 1 }
+            return (HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!, Data())
+        }
         config.authProvider = provider
         config.retryPolicy = RetryPolicy(maxAttempts: 1)
 
@@ -113,12 +109,11 @@ struct NetworkClientScenariosTests {
 
     @Test("Request interceptor throwing surfaces .interceptorFailed")
     func requestInterceptorThrows() async {
-        MockURLProtocol.handler = { _ in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { _ in
             // Should never be reached
             (HTTPURLResponse(url: URL(string: "https://x.test/scenario")!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data())
         }
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.requestInterceptors = [ThrowingRequestInterceptor()]
         config.retryPolicy = RetryPolicy(maxAttempts: 1)
 
@@ -138,19 +133,17 @@ struct NetworkClientScenariosTests {
     @Test("sendWithProgress applies BearerAuth header and succeeds")
     func sendWithProgressAppliesAuth() async throws {
         let seenAuth = LockedState<String?>(nil)
-        MockURLProtocol.handler = { request in
-            seenAuth.withLock { $0 = request.value(forHTTPHeaderField: "Authorization") }
-            let dto = TestPayloadDTO(id: 99, name: "uploaded")
-            let data = try JSONEncoder().encode(dto)
-            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
-        }
-
         let store = InMemoryTokenStore(initial: TokenPair(accessToken: "abc", refreshToken: "r"))
         let coord = RefreshCoordinator { _ in TokenPair(accessToken: "new", refreshToken: "r2") }
         let provider = BearerAuthProvider(store: store, coordinator: coord)
 
         var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
+            seenAuth.withLock { $0 = request.value(forHTTPHeaderField: "Authorization") }
+            let dto = TestPayloadDTO(id: 99, name: "uploaded")
+            let data = try JSONEncoder().encode(dto)
+            return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, data)
+        }
         config.authProvider = provider
 
         let client = NetworkClient(configuration: config)
@@ -168,11 +161,10 @@ struct NetworkClientScenariosTests {
 
     @Test("503 with empty body: inner .serverError has nil payload")
     func serverErrorEmptyBodyNilPayload() async {
-        MockURLProtocol.handler = { request in
+        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
+        config.sessionConfiguration = MockURLProtocol.sessionConfiguration { request in
             (HTTPURLResponse(url: request.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!, Data())
         }
-        var config = NetworkConfiguration(baseURL: URL(string: "https://x.test")!)
-        config.sessionConfiguration = MockURLProtocol.sessionConfiguration()
         config.retryPolicy = RetryPolicy(maxAttempts: 1)
 
         let client = NetworkClient(configuration: config)

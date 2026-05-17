@@ -15,7 +15,8 @@ This guide walks through every common pattern with runnable code. For installati
 8. [Logging with redaction](#logging-with-redaction)
 9. [Retry policy](#retry-policy)
 10. [Per-endpoint overrides](#per-endpoint-overrides)
-11. [Multipart upload with progress](#multipart-upload-with-progress)
+11. [Caching (URLCache + ETag)](#caching-urlcache--etag)
+12. [Multipart upload with progress](#multipart-upload-with-progress)
 12. [Background uploads and downloads](#background-uploads-and-downloads)
 13. [Cancellation](#cancellation)
 14. [Error handling patterns](#error-handling-patterns)
@@ -469,6 +470,63 @@ struct LongPollEvents: Endpoint {
     var retryPolicy: RetryPolicy? { RetryPolicy(maxAttempts: 1) }
 }
 ```
+
+---
+
+## Caching (URLCache + ETag)
+
+URLSession transparently handles HTTP caching with `If-None-Match` / `If-Modified-Since` when:
+- The server sends `Cache-Control` + `ETag` headers
+- The session has a `URLCache` configured
+- The endpoint's `cachePolicy` permits cache use (default does)
+
+Wire up a cache and choose per-endpoint cache policies:
+
+```swift
+import ForgeNetworking
+import Foundation
+
+let cache = URLCache(
+    memoryCapacity: 16 * 1024 * 1024,   // 16 MB in-memory
+    diskCapacity: 256 * 1024 * 1024,    // 256 MB on disk
+    diskPath: "forge-networking-cache"
+)
+
+var config = NetworkConfiguration(baseURL: URL(string: "https://api.example.com")!)
+config.urlCache = cache
+let client = NetworkClient(configuration: config)
+```
+
+Override cache policy per endpoint:
+
+```swift
+struct ListArticles: Endpoint {
+    typealias Body = Empty
+    typealias Response = [ArticleDTO]
+
+    var path: String { "/articles" }
+    var method: HTTPMethod { .get }
+
+    // Always serve fresh — this endpoint is cheap on the server
+    var cachePolicy: URLRequest.CachePolicy? { .reloadIgnoringLocalCacheData }
+}
+
+struct GetArticleBody: Endpoint {
+    typealias Body = Empty
+    typealias Response = ArticleDTO
+
+    let id: String
+    var path: String { "/articles/\(id)" }
+    var method: HTTPMethod { .get }
+
+    // Prefer cache; URLSession will revalidate with ETag automatically
+    var cachePolicy: URLRequest.CachePolicy? { .returnCacheDataElseLoad }
+}
+```
+
+ETag handling is automatic: if the cached response has an `ETag` and the policy allows revalidation, URLSession sends `If-None-Match`. On `304 Not Modified`, URLSession serves the cached body and your endpoint code sees a normal `200` with the decoded response. **No additional configuration needed.**
+
+For servers that send `ETag` without `Cache-Control` (so URLSession can't cache), you'll need to track ETags explicitly with a custom interceptor — out of scope for v1.3.
 
 ---
 

@@ -14,6 +14,7 @@ public protocol Endpoint<Body, Response>: Sendable {
     var retryPolicy: RetryPolicy? { get }
     var timeout: TimeInterval? { get }
     var acceptableContentTypes: [String]? { get }
+    var cachePolicy: URLRequest.CachePolicy? { get }
 
     func decodeResponse(from data: Data, response: HTTPResponse, using decoder: JSONDecoder) throws -> Response
 }
@@ -25,6 +26,7 @@ public extension Endpoint {
     var retryPolicy: RetryPolicy? { nil }
     var timeout: TimeInterval? { nil }
     var acceptableContentTypes: [String]? { nil }
+    var cachePolicy: URLRequest.CachePolicy? { nil }
 }
 
 public extension Endpoint where Body == Empty {

@@ -10,14 +10,18 @@ public actor NetworkClient: NetworkClientProtocol {
 
     public init(configuration: NetworkConfiguration) {
         self.configuration = configuration
+        let sessionConfig = configuration.sessionConfiguration.copy() as! URLSessionConfiguration
+        if let urlCache = configuration.urlCache {
+            sessionConfig.urlCache = urlCache
+        }
         if let delegate = configuration.sessionDelegate {
             self.session = URLSession(
-                configuration: configuration.sessionConfiguration,
+                configuration: sessionConfig,
                 delegate: delegate,
                 delegateQueue: nil
             )
         } else {
-            self.session = URLSession(configuration: configuration.sessionConfiguration)
+            self.session = URLSession(configuration: sessionConfig)
         }
         self.interceptors = InterceptorChain(
             request: configuration.requestInterceptors,

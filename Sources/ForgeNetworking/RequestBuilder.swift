@@ -26,6 +26,9 @@ public enum RequestBuilder {
         if let timeout = endpoint.timeout {
             request.timeoutInterval = timeout
         }
+        if let policy = endpoint.cachePolicy {
+            request.cachePolicy = policy
+        }
 
         // defaults first, then endpoint overrides
         for (k, v) in defaultHeaders { request.setValue(v, forHTTPHeaderField: k) }

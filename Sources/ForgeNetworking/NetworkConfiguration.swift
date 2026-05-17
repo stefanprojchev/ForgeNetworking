@@ -14,6 +14,7 @@ public struct NetworkConfiguration: Sendable {
     public var maxConcurrentRequestsPerHost: Int?
     public var timeout: TimeInterval
     public var logger: (any NetworkLogger)?
+    public var urlCache: URLCache?
 
     public init(
         baseURL: URL,
@@ -28,7 +29,8 @@ public struct NetworkConfiguration: Sendable {
         retryPolicy: RetryPolicy = .default,
         maxConcurrentRequestsPerHost: Int? = nil,
         timeout: TimeInterval = 60,
-        logger: (any NetworkLogger)? = nil
+        logger: (any NetworkLogger)? = nil,
+        urlCache: URLCache? = nil
     ) {
         self.baseURL = baseURL
         self.defaultHeaders = defaultHeaders
@@ -43,5 +45,6 @@ public struct NetworkConfiguration: Sendable {
         self.maxConcurrentRequestsPerHost = maxConcurrentRequestsPerHost
         self.timeout = timeout
         self.logger = logger
+        self.urlCache = urlCache
     }
 }

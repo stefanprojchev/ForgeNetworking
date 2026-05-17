@@ -924,6 +924,49 @@ The stream's buffering is unbounded, so events queued before you subscribe are s
 
 ---
 
+## Telemetry hooks (MetricsReporter)
+
+For production monitoring (request duration, error rates, retry counts, payload sizes), implement `MetricsReporter` and assign it to `NetworkConfiguration.metricsReporter`:
+
+```swift
+import ForgeNetworking
+import Foundation
+
+actor MyReporter: MetricsReporter {
+    func record(_ metric: RequestMetric) async {
+        // Forward to Datadog, CloudWatch, Firebase Performance, or wherever
+        analytics.track("network_request", properties: [
+            "endpoint": metric.endpointTypeName,
+            "method": metric.method.rawValue,
+            "path": metric.path,
+            "duration_ms": Int(metric.duration * 1000),
+            "attempts": metric.attempts,
+            "status": metric.statusCode ?? -1,
+            "bytes_in": metric.bytesIn,
+            "bytes_out": metric.bytesOut,
+            "success": metric.isSuccess,
+        ])
+    }
+}
+
+var config = NetworkConfiguration(baseURL: URL(string: "https://api.example.com")!)
+config.metricsReporter = MyReporter()
+let client = NetworkClient(configuration: config)
+```
+
+One metric is emitted per logical `send(_:)` call (after all retries + refresh). The metric covers:
+- `endpointTypeName` — `String(describing: E.self)` so you can group by endpoint
+- `method`, `path` — for routing
+- `duration` — total wall-clock time including retries
+- `attempts` — 1 if first try succeeded, more if retried
+- `statusCode` — best-effort (nil if request never reached the server)
+- `bytesOut` / `bytesIn` — request / response body sizes
+- `error` — `nil` on success; the terminal `NetworkError` on failure
+
+The reporter is called asynchronously and never blocks the response — slow reporters won't slow your requests.
+
+---
+
 ## Testing with MockNetworkClient
 
 Production code should depend on `NetworkClientProtocol`, not `NetworkClient` directly. Then in tests, inject `MockNetworkClient`.

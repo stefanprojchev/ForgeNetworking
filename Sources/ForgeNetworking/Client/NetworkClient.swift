@@ -37,6 +37,7 @@ public actor NetworkClient: NetworkClientProtocol {
         let policy = endpoint.retryPolicy ?? configuration.retryPolicy
         var attempt = 0
         var lastError: NetworkError?
+        var lastStats = RequestStats()
         let startTime = Date()
 
         // Generate idempotency key once for the entire send (incl. retries + refresh-retry)
@@ -45,13 +46,29 @@ public actor NetworkClient: NetworkClientProtocol {
         while attempt < policy.maxAttempts {
             attempt += 1
             do {
-                let result = try await sendOnce(endpoint, allowRefresh: true, idempotencyKey: idempotencyKey)
+                let (result, stats) = try await sendOnce(endpoint, allowRefresh: true, idempotencyKey: idempotencyKey)
+                lastStats = stats
+                await reportMetric(
+                    endpoint: endpoint,
+                    attempts: attempt,
+                    duration: Date().timeIntervalSince(startTime),
+                    stats: lastStats,
+                    error: nil
+                )
                 return result
             } catch let error as NetworkError {
                 lastError = error
+                lastStats.statusCode = Self.extractStatus(from: error)
                 // Check if this error type is retryable at all (ignoring attempt count).
                 let isRetryable = policy.shouldRetry(error: error, method: endpoint.method, attempt: 0)
                 guard isRetryable else {
+                    await reportMetric(
+                        endpoint: endpoint,
+                        attempts: attempt,
+                        duration: Date().timeIntervalSince(startTime),
+                        stats: lastStats,
+                        error: error
+                    )
                     throw error
                 }
                 // If we have more attempts remaining, check deadline then sleep.
@@ -61,7 +78,15 @@ public actor NetworkClient: NetworkClientProtocol {
                     if let deadline = policy.deadline {
                         let elapsed = Date().timeIntervalSince(startTime)
                         if elapsed + delay > deadline {
-                            throw NetworkError.retryExhausted(lastError: error)
+                            let final = NetworkError.retryExhausted(lastError: error)
+                            await reportMetric(
+                                endpoint: endpoint,
+                                attempts: attempt,
+                                duration: Date().timeIntervalSince(startTime),
+                                stats: lastStats,
+                                error: final
+                            )
+                            throw final
                         }
                     }
                     if delay > 0 {
@@ -71,17 +96,67 @@ public actor NetworkClient: NetworkClientProtocol {
                 // Otherwise fall through to retryExhausted below.
             }
         }
-        throw NetworkError.retryExhausted(lastError: lastError ?? .unacceptableStatus(
+        let exhausted = NetworkError.retryExhausted(lastError: lastError ?? .unacceptableStatus(
             HTTPResponse(statusCode: 0, headers: [:], body: Data(),
                          request: URLRequest(url: configuration.baseURL))
         ))
+        await reportMetric(
+            endpoint: endpoint,
+            attempts: attempt,
+            duration: Date().timeIntervalSince(startTime),
+            stats: lastStats,
+            error: exhausted
+        )
+        throw exhausted
+    }
+
+    private struct RequestStats: Sendable {
+        var bytesIn: Int = 0
+        var bytesOut: Int = 0
+        var statusCode: Int? = nil
+    }
+
+    private nonisolated static func extractStatus(from error: NetworkError) -> Int? {
+        switch error {
+        case .clientError(let r, _), .serverError(let r, _),
+             .forbidden(let r), .notFound(let r),
+             .unacceptableStatus(let r), .decoding(_, let r),
+             .unacceptableContentType(let r, _, _):
+            return r.statusCode
+        case .unauthorized:
+            return 401
+        default:
+            return nil
+        }
+    }
+
+    private func reportMetric<E: Endpoint>(
+        endpoint: E,
+        attempts: Int,
+        duration: TimeInterval,
+        stats: RequestStats,
+        error: NetworkError?
+    ) async {
+        guard let reporter = configuration.metricsReporter else { return }
+        let metric = RequestMetric(
+            endpointTypeName: String(describing: E.self),
+            method: endpoint.method,
+            path: endpoint.path,
+            duration: duration,
+            attempts: attempts,
+            statusCode: stats.statusCode,
+            bytesOut: stats.bytesOut,
+            bytesIn: stats.bytesIn,
+            error: error
+        )
+        await reporter.record(metric)
     }
 
     private func sendOnce<E: Endpoint>(
         _ endpoint: E,
         allowRefresh: Bool,
         idempotencyKey: String? = nil
-    ) async throws -> E.Response {
+    ) async throws -> (E.Response, RequestStats) {
         var built = try RequestBuilder.build(
             endpoint: endpoint,
             baseURL: configuration.baseURL,
@@ -101,6 +176,9 @@ public actor NetworkClient: NetworkClientProtocol {
         }
 
         try await interceptors.applyRequest(&built.request, endpoint: endpoint)
+
+        // Capture outbound body size before the request is sent.
+        let bytesOut = built.request.httpBody?.count ?? 0
 
         let host = built.request.url?.host ?? ""
         await gate.acquire(host: host)
@@ -147,11 +225,14 @@ public actor NetworkClient: NetworkClientProtocol {
             )
         }
 
+        let stats = RequestStats(bytesIn: data.count, bytesOut: bytesOut, statusCode: http.statusCode)
+
         if E.Response.self == Empty.self {
-            return Empty() as! E.Response
+            return (Empty() as! E.Response, stats)
         }
         do {
-            return try endpoint.decodeResponse(from: data, response: response, using: configuration.decoder)
+            let decoded = try endpoint.decodeResponse(from: data, response: response, using: configuration.decoder)
+            return (decoded, stats)
         } catch {
             throw NetworkError.decoding(error, response)
         }

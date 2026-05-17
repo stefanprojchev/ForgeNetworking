@@ -15,6 +15,9 @@ public struct NetworkConfiguration: Sendable {
     public var timeout: TimeInterval
     public var logger: (any NetworkLogger)?
     public var urlCache: URLCache?
+    /// Optional metrics reporter. When set, one `RequestMetric` is emitted per `send(_:)` call
+    /// (after all retries). The reporter is called asynchronously and never blocks the response.
+    public var metricsReporter: (any MetricsReporter)?
 
     public init(
         baseURL: URL,
@@ -30,7 +33,8 @@ public struct NetworkConfiguration: Sendable {
         maxConcurrentRequestsPerHost: Int? = nil,
         timeout: TimeInterval = 60,
         logger: (any NetworkLogger)? = nil,
-        urlCache: URLCache? = nil
+        urlCache: URLCache? = nil,
+        metricsReporter: (any MetricsReporter)? = nil
     ) {
         self.baseURL = baseURL
         self.defaultHeaders = defaultHeaders
@@ -46,5 +50,6 @@ public struct NetworkConfiguration: Sendable {
         self.timeout = timeout
         self.logger = logger
         self.urlCache = urlCache
+        self.metricsReporter = metricsReporter
     }
 }

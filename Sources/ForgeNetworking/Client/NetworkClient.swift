@@ -38,10 +38,13 @@ public actor NetworkClient: NetworkClientProtocol {
         var attempt = 0
         var lastError: NetworkError?
 
+        // Generate idempotency key once for the entire send (incl. retries + refresh-retry)
+        let idempotencyKey: String? = endpoint.idempotencyKeyEnabled ? UUID().uuidString : nil
+
         while attempt < policy.maxAttempts {
             attempt += 1
             do {
-                return try await sendOnce(endpoint, allowRefresh: true)
+                return try await sendOnce(endpoint, allowRefresh: true, idempotencyKey: idempotencyKey)
             } catch let error as NetworkError {
                 lastError = error
                 // Check if this error type is retryable at all (ignoring attempt count).
@@ -65,7 +68,11 @@ public actor NetworkClient: NetworkClientProtocol {
         ))
     }
 
-    private func sendOnce<E: Endpoint>(_ endpoint: E, allowRefresh: Bool) async throws -> E.Response {
+    private func sendOnce<E: Endpoint>(
+        _ endpoint: E,
+        allowRefresh: Bool,
+        idempotencyKey: String? = nil
+    ) async throws -> E.Response {
         var built = try RequestBuilder.build(
             endpoint: endpoint,
             baseURL: configuration.baseURL,
@@ -73,6 +80,11 @@ public actor NetworkClient: NetworkClientProtocol {
             encoder: configuration.encoder
         )
         built.request.timeoutInterval = endpoint.timeout ?? configuration.timeout
+
+        // Inject idempotency key if present
+        if let key = idempotencyKey {
+            built.request.setValue(key, forHTTPHeaderField: endpoint.idempotencyKeyHeaderName)
+        }
 
         let activeAuth = self.activeAuthProvider(for: endpoint)
         if let auth = activeAuth {
@@ -106,7 +118,7 @@ public actor NetworkClient: NetworkClientProtocol {
             switch recovery {
             case .retry:
                 authEventsContinuation.yield(.refreshed)
-                return try await sendOnce(endpoint, allowRefresh: false)
+                return try await sendOnce(endpoint, allowRefresh: false, idempotencyKey: idempotencyKey)
             case .fail:
                 authEventsContinuation.yield(.signedOut)
                 throw NetworkError.unauthorized
@@ -154,6 +166,10 @@ public actor NetworkClient: NetworkClientProtocol {
             encoder: configuration.encoder
         )
         built.request.timeoutInterval = endpoint.timeout ?? configuration.timeout
+
+        if endpoint.idempotencyKeyEnabled {
+            built.request.setValue(UUID().uuidString, forHTTPHeaderField: endpoint.idempotencyKeyHeaderName)
+        }
 
         if let auth = activeAuthProvider(for: endpoint) {
             try await auth.apply(to: &built.request, endpoint: endpoint)
@@ -233,6 +249,10 @@ public actor NetworkClient: NetworkClientProtocol {
             encoder: configuration.encoder
         )
         built.request.timeoutInterval = endpoint.timeout ?? configuration.timeout
+
+        if endpoint.idempotencyKeyEnabled {
+            built.request.setValue(UUID().uuidString, forHTTPHeaderField: endpoint.idempotencyKeyHeaderName)
+        }
 
         if let auth = activeAuthProvider(for: endpoint) {
             try await auth.apply(to: &built.request, endpoint: endpoint)

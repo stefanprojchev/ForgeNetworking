@@ -15,6 +15,8 @@ public protocol Endpoint<Body, Response>: Sendable {
     var timeout: TimeInterval? { get }
     var acceptableContentTypes: [String]? { get }
     var cachePolicy: URLRequest.CachePolicy? { get }
+    var idempotencyKeyEnabled: Bool { get }
+    var idempotencyKeyHeaderName: String { get }
 
     func decodeResponse(from data: Data, response: HTTPResponse, using decoder: JSONDecoder) throws -> Response
 }
@@ -27,6 +29,8 @@ public extension Endpoint {
     var timeout: TimeInterval? { nil }
     var acceptableContentTypes: [String]? { nil }
     var cachePolicy: URLRequest.CachePolicy? { nil }
+    var idempotencyKeyEnabled: Bool { false }
+    var idempotencyKeyHeaderName: String { "Idempotency-Key" }
 }
 
 public extension Endpoint where Body == Empty {

@@ -14,7 +14,8 @@ This guide walks through every common pattern with runnable code. For installati
 7. [Interceptors](#interceptors)
 8. [Logging with redaction](#logging-with-redaction)
 9. [Retry policy](#retry-policy)
-10. [Per-endpoint overrides](#per-endpoint-overrides)
+10. [Idempotency keys for safe POST retries](#idempotency-keys-for-safe-post-retries)
+11. [Per-endpoint overrides](#per-endpoint-overrides)
 11. [Caching (URLCache + ETag)](#caching-urlcache--etag)
 12. [Multipart upload with progress](#multipart-upload-with-progress)
 12. [Background uploads and downloads](#background-uploads-and-downloads)
@@ -448,6 +449,43 @@ config.retryPolicy = RetryPolicy(
 ```
 
 The refresh-on-401 retry is independent of `RetryPolicy` — it always happens at most once per send.
+
+---
+
+## Idempotency keys for safe POST retries
+
+By default, `RetryPolicy` skips POST and PATCH because they're not idempotent — retrying a "create order" call could create two orders if the first succeeded but the response was lost. With server-side idempotency keys (supported by Stripe, Square, GitHub, and many modern APIs) you can safely retry these.
+
+Opt in per endpoint:
+
+```swift
+struct CreateOrder: Endpoint {
+    typealias Body = OrderRequest
+    typealias Response = OrderDTO
+
+    let payload: OrderRequest
+    var path: String { "/orders" }
+    var method: HTTPMethod { .post }
+    var body: RequestBody<OrderRequest> { .json(payload) }
+
+    var idempotencyKeyEnabled: Bool { true }
+    // Default header: "Idempotency-Key"
+    // Override with `var idempotencyKeyHeaderName: String { "X-Idempotency-Key" }` if your API needs it
+}
+```
+
+ForgeNetworking generates a fresh UUID per `send(_:)` call and includes it on the first attempt **and** every retry — so the server can deduplicate based on the key. Each new `send(_:)` call gets a new key.
+
+To actually retry POSTs, also configure your retry policy:
+
+```swift
+config.retryPolicy = RetryPolicy(
+    maxAttempts: 3,
+    retryableMethods: [.get, .head, .put, .delete, .post]  // include POST
+)
+```
+
+Without the key, retrying POSTs is dangerous. With the key, it's safe.
 
 ---
 

@@ -117,7 +117,7 @@ public actor NetworkClient: NetworkClientProtocol {
             return Empty() as! E.Response
         }
         do {
-            return try configuration.decoder.decode(E.Response.self, from: data)
+            return try endpoint.decodeResponse(from: data, response: response, using: configuration.decoder)
         } catch {
             throw NetworkError.decoding(error, response)
         }
@@ -195,7 +195,7 @@ public actor NetworkClient: NetworkClientProtocol {
         }
         if E.Response.self == Empty.self { return (Empty() as! E.Response, stream) }
         do {
-            let decoded = try configuration.decoder.decode(E.Response.self, from: data)
+            let decoded = try endpoint.decodeResponse(from: data, response: response, using: configuration.decoder)
             return (decoded, stream)
         } catch {
             throw NetworkError.decoding(error, response)

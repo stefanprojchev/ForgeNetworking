@@ -5,7 +5,8 @@ This guide walks through every common pattern with runnable code. For installati
 ## Table of contents
 
 1. [Defining endpoints](#defining-endpoints)
-2. [Constructing a client](#constructing-a-client)
+2. [Non-JSON response types](#non-json-response-types)
+3. [Constructing a client](#constructing-a-client)
 3. [Query parameters and headers](#query-parameters-and-headers)
 4. [Request bodies — JSON, form, raw, multipart](#request-bodies)
 5. [Authentication](#authentication)
@@ -70,6 +71,52 @@ struct DeleteUser: Endpoint {
 ```
 
 `Empty` is a `Codable & Sendable` placeholder for endpoints with no request body or that return no parsed response. When `Body == Empty`, the default `body` of `.empty` is automatically applied — you don't need to declare it.
+
+---
+
+## Non-JSON response types
+
+By default, `Endpoint.Response` must be `Decodable` and is decoded from JSON. For binary or text responses, use the bundled refinements:
+
+```swift
+import ForgeNetworking
+
+// Raw bytes — e.g., images, PDFs, binary blobs
+struct DownloadAvatar: DataEndpoint {
+    typealias Body = Empty
+    let userID: String
+    var path: String { "/users/\(userID)/avatar" }
+    var method: HTTPMethod { .get }
+}
+
+let imageData = try await client.send(DownloadAvatar(userID: "42"))
+
+// Plain text
+struct FetchChangelog: StringEndpoint {
+    typealias Body = Empty
+    var path: String { "/CHANGELOG.md" }
+    var method: HTTPMethod { .get }
+}
+
+let text = try await client.send(FetchChangelog())
+```
+
+For custom response shapes, implement `decodeResponse` yourself:
+
+```swift
+struct ParseImage: Endpoint {
+    typealias Body = Empty
+    typealias Response = UIImage
+    var path: String { "/image.png" }
+    var method: HTTPMethod { .get }
+    func decodeResponse(from data: Data, response: HTTPResponse, using decoder: JSONDecoder) throws -> UIImage {
+        guard let image = UIImage(data: data) else {
+            throw NetworkError.decoding(NSError(domain: "ImageDecode", code: 0), response)
+        }
+        return image
+    }
+}
+```
 
 ---
 

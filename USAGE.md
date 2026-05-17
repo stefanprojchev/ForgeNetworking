@@ -851,3 +851,47 @@ let client = NetworkClient(configuration: config)
 ```
 
 The delegate must be `Sendable` (or `@unchecked Sendable`). It receives the session-level callbacks; per-task progress callbacks for `sendWithProgress` go to an internal delegate independently.
+
+---
+
+## Bundled TLS pinning
+
+For certificate pinning, use one of the built-in `PinningPolicy` implementations instead of writing SecTrust evaluation from scratch:
+
+```swift
+import ForgeNetworking
+
+// Pin entire certificates (DER bytes loaded from your app bundle)
+guard let certURL = Bundle.main.url(forResource: "api-example-com", withExtension: "der"),
+      let certData = try? Data(contentsOf: certURL) else { fatalError("missing pinned cert") }
+
+let policy = CertificatePinningPolicy([
+    "api.example.com": [certData],
+])
+
+var config = NetworkConfiguration(baseURL: URL(string: "https://api.example.com")!)
+config.sessionDelegate = PinningSessionDelegate(policy: policy)
+let client = NetworkClient(configuration: config)
+```
+
+Or pin public keys (more rotation-friendly — the pin survives certificate renewal as long as the key pair stays the same):
+
+```swift
+// Extract the public key from a certificate
+let cert = SecCertificateCreateWithData(nil, certData as CFData)!
+let publicKey = SecCertificateCopyKey(cert)!
+
+let policy = PublicKeyPinningPolicy([
+    "api.example.com": [publicKey],
+])
+config.sessionDelegate = PinningSessionDelegate(policy: policy)
+```
+
+The policy returns one of three results per host:
+- `.allow` — pinning matched; connection accepted
+- `.reject` — host is pinned but no pin matched; auth challenge cancelled
+- `.notApplicable` — host isn't in the policy map; default OS trust evaluation applies (lets unpinned hosts through unchanged)
+
+Both policies accept a `validateChain: Bool` parameter (defaults to `true`). When `true`, `SecTrustEvaluateWithError` is called before comparing pins — this confirms the chain is signed by a trusted CA and hasn't expired. Set to `false` only in test environments against self-signed certificates.
+
+For pinning alongside other delegate work (custom redirect handling, client certificates, metrics), subclass `PinningSessionDelegate` or compose your own `URLSessionDelegate` that calls into a `PinningPolicy` directly.

@@ -12,6 +12,7 @@ public indirect enum NetworkError: Error, Sendable {
     case clientError(HTTPResponse, ErrorPayload?)
     case serverError(HTTPResponse, ErrorPayload?)
     case decoding(any Error, HTTPResponse)
+    case unacceptableContentType(HTTPResponse, expected: [String], actual: String?)
     case unacceptableStatus(HTTPResponse)
     case interceptorFailed(any Error)
     case retryExhausted(lastError: NetworkError)

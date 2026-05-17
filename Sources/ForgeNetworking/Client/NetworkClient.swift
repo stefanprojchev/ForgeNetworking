@@ -113,6 +113,15 @@ public actor NetworkClient: NetworkClientProtocol {
             throw NetworkError.from(response: response)
         }
 
+        if let acceptable = endpoint.acceptableContentTypes,
+           !Self.matchesContentType(response.value(forHeader: "Content-Type"), acceptable: acceptable) {
+            throw NetworkError.unacceptableContentType(
+                response,
+                expected: acceptable,
+                actual: response.value(forHeader: "Content-Type")
+            )
+        }
+
         if E.Response.self == Empty.self {
             return Empty() as! E.Response
         }
@@ -192,6 +201,14 @@ public actor NetworkClient: NetworkClientProtocol {
         try await interceptors.applyResponse(&response, endpoint: endpoint)
         guard (200...299).contains(response.statusCode) else {
             throw NetworkError.from(response: response)
+        }
+        if let acceptable = endpoint.acceptableContentTypes,
+           !Self.matchesContentType(response.value(forHeader: "Content-Type"), acceptable: acceptable) {
+            throw NetworkError.unacceptableContentType(
+                response,
+                expected: acceptable,
+                actual: response.value(forHeader: "Content-Type")
+            )
         }
         if E.Response.self == Empty.self { return (Empty() as! E.Response, stream) }
         do {
@@ -311,5 +328,25 @@ public actor NetworkClient: NetworkClientProtocol {
             if let key = k as? String, let value = v as? String { dict[key] = value }
         }
         return dict
+    }
+
+    nonisolated static func matchesContentType(_ actual: String?, acceptable: [String]) -> Bool {
+        guard let actual else { return false }
+        // Strip parameters: "application/json; charset=utf-8" → "application/json"
+        let actualType = actual.split(separator: ";").first
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? actual.lowercased()
+        for candidate in acceptable {
+            let candidateLowered = candidate.lowercased()
+            // Exact match
+            if actualType == candidateLowered { return true }
+            // Wildcard subtype: "text/*" matches "text/plain", "text/html"
+            if candidateLowered.hasSuffix("/*") {
+                let prefix = candidateLowered.dropLast(2) // drop "/*"
+                if actualType.hasPrefix("\(prefix)/") { return true }
+            }
+            // Universal wildcard: "*/*" matches anything
+            if candidateLowered == "*/*" { return true }
+        }
+        return false
     }
 }

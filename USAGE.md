@@ -735,6 +735,37 @@ do {
 
 ---
 
+## Content-Type validation
+
+If your endpoint expects JSON but the server returns HTML (captive portal, login redirect, misconfigured staging), you'd get a confusing decode error mid-parse. Declare `acceptableContentTypes` to get a clear error before decoding instead:
+
+```swift
+struct GetUser: Endpoint {
+    typealias Body = Empty
+    typealias Response = UserDTO
+    let id: String
+    var path: String { "/users/\(id)" }
+    var method: HTTPMethod { .get }
+    var acceptableContentTypes: [String]? { ["application/json"] }
+}
+
+do {
+    let user = try await client.send(GetUser(id: "42"))
+} catch let NetworkError.unacceptableContentType(_, expected, actual) {
+    print("Expected one of \(expected), got \(actual ?? "<none>")")
+}
+```
+
+Wildcards are supported:
+- `"text/*"` — any text subtype (`text/plain`, `text/html`, etc.)
+- `"*/*"` — any type
+
+Matching is case-insensitive and parameters (`; charset=utf-8`) are stripped. `nil` (the default) skips validation entirely — existing endpoints behave unchanged.
+
+Validation runs AFTER the 2xx status check, so error responses still surface as `.clientError` / `.serverError` regardless of their Content-Type.
+
+---
+
 ## Custom encoder / decoder
 
 ```swift

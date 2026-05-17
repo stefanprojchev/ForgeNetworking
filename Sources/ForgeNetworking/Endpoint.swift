@@ -13,6 +13,7 @@ public protocol Endpoint<Body, Response>: Sendable {
     var authentication: AuthenticationMode { get }
     var retryPolicy: RetryPolicy? { get }
     var timeout: TimeInterval? { get }
+    var acceptableContentTypes: [String]? { get }
 
     func decodeResponse(from data: Data, response: HTTPResponse, using decoder: JSONDecoder) throws -> Response
 }
@@ -23,6 +24,7 @@ public extension Endpoint {
     var authentication: AuthenticationMode { .inherit }
     var retryPolicy: RetryPolicy? { nil }
     var timeout: TimeInterval? { nil }
+    var acceptableContentTypes: [String]? { nil }
 }
 
 public extension Endpoint where Body == Empty {

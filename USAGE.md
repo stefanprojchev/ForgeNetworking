@@ -450,6 +450,18 @@ config.retryPolicy = RetryPolicy(
 
 The refresh-on-401 retry is independent of `RetryPolicy` — it always happens at most once per send.
 
+For total-time bounds, set `deadline`:
+
+```swift
+config.retryPolicy = RetryPolicy(
+    maxAttempts: 5,
+    backoff: .exponentialWithJitter(base: 1, cap: 8),
+    deadline: 10        // give up after 10s total, no matter how many attempts remain
+)
+```
+
+When set, the retry loop checks elapsed time before each backoff sleep. If the next backoff would push past the deadline, the request fails with `.retryExhausted` immediately rather than waiting.
+
 ---
 
 ## Idempotency keys for safe POST retries

@@ -37,6 +37,7 @@ public actor NetworkClient: NetworkClientProtocol {
         let policy = endpoint.retryPolicy ?? configuration.retryPolicy
         var attempt = 0
         var lastError: NetworkError?
+        let startTime = Date()
 
         // Generate idempotency key once for the entire send (incl. retries + refresh-retry)
         let idempotencyKey: String? = endpoint.idempotencyKeyEnabled ? UUID().uuidString : nil
@@ -44,7 +45,8 @@ public actor NetworkClient: NetworkClientProtocol {
         while attempt < policy.maxAttempts {
             attempt += 1
             do {
-                return try await sendOnce(endpoint, allowRefresh: true, idempotencyKey: idempotencyKey)
+                let result = try await sendOnce(endpoint, allowRefresh: true, idempotencyKey: idempotencyKey)
+                return result
             } catch let error as NetworkError {
                 lastError = error
                 // Check if this error type is retryable at all (ignoring attempt count).
@@ -52,9 +54,16 @@ public actor NetworkClient: NetworkClientProtocol {
                 guard isRetryable else {
                     throw error
                 }
-                // If we have more attempts remaining, sleep then retry.
+                // If we have more attempts remaining, check deadline then sleep.
                 if attempt < policy.maxAttempts {
                     let delay = RetryExecutor.delay(for: error, attempt: attempt, policy: policy)
+                    // Deadline check: if the planned backoff would push past the deadline, stop now.
+                    if let deadline = policy.deadline {
+                        let elapsed = Date().timeIntervalSince(startTime)
+                        if elapsed + delay > deadline {
+                            throw NetworkError.retryExhausted(lastError: error)
+                        }
+                    }
                     if delay > 0 {
                         try await Task.sleep(for: .seconds(delay))
                     }

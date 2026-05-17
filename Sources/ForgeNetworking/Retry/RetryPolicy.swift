@@ -6,6 +6,11 @@ public struct RetryPolicy: Sendable, Equatable {
     public var retryableStatuses: Set<Int>
     public var retryableMethods: Set<HTTPMethod>
     public var honorsRetryAfter: Bool
+    /// Optional wall-clock cap for the total `send(_:)` duration (all attempts + backoff waits).
+    /// When set, the retry loop checks elapsed time before each backoff sleep — if the next
+    /// backoff would push past `deadline`, the call fails immediately with `.retryExhausted`.
+    /// `nil` (default) preserves the existing behaviour.
+    public var deadline: TimeInterval?
     public var shouldRetry: (@Sendable (NetworkError, Int) -> Bool)?
 
     public init(
@@ -14,6 +19,7 @@ public struct RetryPolicy: Sendable, Equatable {
         retryableStatuses: Set<Int> = [408, 425, 429, 500, 502, 503, 504],
         retryableMethods: Set<HTTPMethod> = [.get, .head, .put, .delete, .options],
         honorsRetryAfter: Bool = true,
+        deadline: TimeInterval? = nil,
         shouldRetry: (@Sendable (NetworkError, Int) -> Bool)? = nil
     ) {
         self.maxAttempts = maxAttempts
@@ -21,6 +27,7 @@ public struct RetryPolicy: Sendable, Equatable {
         self.retryableStatuses = retryableStatuses
         self.retryableMethods = retryableMethods
         self.honorsRetryAfter = honorsRetryAfter
+        self.deadline = deadline
         self.shouldRetry = shouldRetry
     }
 
@@ -31,7 +38,8 @@ public struct RetryPolicy: Sendable, Equatable {
         lhs.backoff == rhs.backoff &&
         lhs.retryableStatuses == rhs.retryableStatuses &&
         lhs.retryableMethods == rhs.retryableMethods &&
-        lhs.honorsRetryAfter == rhs.honorsRetryAfter
+        lhs.honorsRetryAfter == rhs.honorsRetryAfter &&
+        lhs.deadline == rhs.deadline
         // closures intentionally not compared
     }
 
